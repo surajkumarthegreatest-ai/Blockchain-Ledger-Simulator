@@ -1,12 +1,12 @@
-Prompt 1:
-
+# Prompt 1:
+ 
 Blockchain Ledger Simulator: An application simulating a decentralized ledger with cryptographic hashing, block structures, and proof of work. Requires: OOP node structures, linked lists, STL, hashing wrappers.  , this is a mini project using  C++, tell me what are prerequisites to learn or plan before writing a single line of code
 
-Response 2:
+# Response 1:
 
-# Prerequisites & Planning for the Blockchain Ledger Simulator (C++)
+## Prerequisites & Planning for the Blockchain Ledger Simulator (C++)
 
-## 1. Concepts to understand first
+### 1. Concepts to understand first
 
 **Blockchain fundamentals**
 - What a block contains: index, timestamp, data/transactions, previous hash, own hash, nonce
@@ -29,7 +29,7 @@ Response 2:
 - Since this is a simulator, decide how "nodes" are represented (objects in one process, not real networking)
 - Basic idea of consensus: the longest valid chain wins
 
-## 2. C++ skills to revise
+### 2. C++ skills to revise
 
 | Requirement | What to be comfortable with |
 |---|---|
@@ -39,7 +39,7 @@ Response 2:
 | **Hashing wrappers** | Writing a class that wraps a library call so the rest of your code never touches the library directly |
 | **Misc** | Header/source split, include guards, namespaces, exceptions, basic CMake or Makefile |
 
-## 3. Key design decisions (decide before coding)
+### 3. Key design decisions (decide before coding)
 
 1. **Hashing library:** implement SHA-256 yourself, use a small header-only implementation, or use OpenSSL (`libssl`). For a mini project, a header-only SHA-256 is the easiest to set up. Wrapping it behind your own `Hasher` class lets you swap later.
 2. **Linked list approach:** a custom singly/doubly linked list of `Block` nodes (this is likely what your assignment wants) versus `std::list`. Custom is better for demonstrating the concept.
@@ -48,7 +48,7 @@ Response 2:
 5. **Difficulty:** fixed or adjustable?
 6. **Interface:** CLI menu (add transaction, mine block, view chain, validate chain, tamper with a block to demo detection).
 
-## 4. Planned class design (sketch on paper first)
+### 4. Planned class design (sketch on paper first)
 
 - `Transaction`: sender, receiver, amount
 - `Block`: index, timestamp, transactions, prevHash, hash, nonce, `calculateHash()`, `mine(difficulty)`
@@ -56,7 +56,7 @@ Response 2:
 - `Blockchain`: head/tail pointers, `addBlock()`, `isValid()`, `print()`
 - `Node` (optional): owns a `Blockchain`, mempool of pending transactions, can mine and sync
 
-## 5. Suggested build order
+### 5. Suggested build order
 
 1. Hash wrapper with a test (known SHA-256 vectors)
 2. `Block` with hash calculation
@@ -67,7 +67,7 @@ Response 2:
 7. Tamper demo and validation failure output
 8. (Optional) multiple nodes and longest-chain sync
 
-## 6. Things to prepare
+### 6. Things to prepare
 
 - A short written spec: features in scope vs. out of scope
 - Class diagram (UML) and a flow for "add block → mine → validate"
@@ -75,7 +75,7 @@ Response 2:
 - Project structure: `include/`, `src/`, `main.cpp`, `CMakeLists.txt`
 - Compiler setup (g++ with C++17) and a version-control repo
 
-## 7. Common pitfalls
+### 7. Common pitfalls
 
 - Forgetting to include the nonce and previous hash in the hashed content
 - Memory leaks or dangling pointers in the linked list (use smart pointers or a proper destructor)
@@ -84,30 +84,30 @@ Response 2:
 
 If you tell me whether your assignment expects a networked simulation or just in-memory nodes, I can help you refine the class design next.
 
-Prompt 2:
+# Prompt 2:
 
 Okay for this project to work efficiently and I get understanding also properly (considering that i had already created Blockchain using python , JSON,sha256),give the step by step plan which atomic and unambiguous not only Blockchain whole project,what is the aim ,input and output of this project
 
-Response 2:
+# Response 2:
 
-# Blockchain Ledger Simulator: Aim, I/O and Plan
+## Blockchain Ledger Simulator: Aim, I/O and Plan
 
-## Aim
+### Aim
 Build a C++ console program that simulates a tamper-evident ledger: transactions are grouped into blocks, each block is linked to the previous one by its hash, and a block is accepted only after Proof of Work. The goal is to demonstrate chaining, mining, and tamper detection. You already know the logic from Python, so the new learning is C++ ownership, classes, and STL.
 
-## Input
+### Input
 - CLI menu choices
 - Transaction: sender (string), receiver (string), amount (double)
 - Difficulty (int, e.g. 4)
 - Block index to tamper with, plus new data (demo only)
 
-## Output
+### Output
 - Mined block info: index, nonce, hash, time taken
 - Printed chain: every block's fields
 - Validation result: `VALID`, or `INVALID at block N` with the reason
 - Optional: save/load the chain as a JSON file
 
-## Atomic steps
+### Atomic steps
 Each step has a "done when" test. Don't move on until it passes.
 
 **Phase 0: Setup**
@@ -162,27 +162,27 @@ Each step has a "done when" test. Don't move on until it passes.
 Since you've done this in Python, I'd focus your C++ learning on steps 11 to 13 (pointer ownership) and 26 (copying chains between nodes). Do you want me to turn the first phases into starter file skeletons (`Hasher`, `Block`, `Blockchain` headers)?
 
 
-Prompt 3:
+# Prompt 3:
 
 I still think this is not that atomic instructions
 
-Response 3:
+# Response 3:
 
 Fair point. Each step below is **one action, one file or function, one check**. Part 1 is Phases A–D; say "next" for the rest.
 
-## Aim / Input / Output (unchanged)
+### Aim / Input / Output (unchanged)
 - **Aim:** C++ console ledger where blocks are hash-linked, mined by PoW, and tampering is detected.
 - **Input:** menu choice, transaction (sender, receiver, amount), difficulty.
 - **Output:** mined block info, printed chain, `VALID` / `INVALID at block N`.
 
-## Phase A: Setup
+### Phase A: Setup
 1. Make folder `ledger/`.
 2. Inside it, make `include/`, `src/`, `tests/`.
 3. Create `main.cpp` containing only `int main(){ std::cout<<"hello\n"; }`.
 4. Compile: `g++ -std=c++17 main.cpp -o app`. ✅ Prints `hello`.
 5. `git init`, then commit.
 
-## Phase B: Hasher
+### Phase B: Hasher
 6. Download a header-only SHA-256 (e.g. picosha2.h) into `include/`.
 7. Create `include/Hasher.h` with an include guard and an empty `class Hasher`.
 8. Add declaration `static std::string sha256(const std::string& s);`.
@@ -192,14 +192,14 @@ Fair point. Each step below is **one action, one file or function, one check**. 
 12. Print `sha256("abc")` twice. ✅ Identical.
 13. Print `sha256("abd")`. ✅ Completely different.
 
-## Phase C: Transaction
+### Phase C: Transaction
 14. Create `include/Transaction.h` with fields `std::string sender, receiver; double amount;`.
 15. Add constructor taking all three.
 16. Add `std::string toString() const` returning `sender + "->" + receiver + ":" + amount`.
 17. Format amount with `std::ostringstream` and `std::fixed << std::setprecision(2)`.
 18. ✅ `Transaction("A","B",10)` prints `A->B:10.00`.
 
-## Phase D: Block
+### Phase D: Block
 19. Create `include/Block.h` with fields: `int index; long long timestamp; std::vector<Transaction> txs; std::string prevHash, hash; int nonce; Block* next;`.
 20. Add constructor `(index, txs, prevHash)`; set `nonce=0`, `next=nullptr`.
 21. Set `timestamp` via `std::chrono::system_clock` (seconds since epoch).
