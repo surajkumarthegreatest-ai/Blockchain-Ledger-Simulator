@@ -213,3 +213,122 @@ Fair point. Each step below is **one action, one file or function, one check**. 
 **Phase E (next):** linked-list chain, validation, mining, pool, nodes. Each step is as small as the ones above.
 
 Say "next" and I'll continue. Want a header skeleton file for Phase B–D too?
+
+
+# Prompt 4:
+
+give me entire folder structure ,use picosha2.h like instead of sha256.h until now
+
+# Response 4:
+
+## Folder structure (up to Phase D, with later phases marked)
+
+```
+ledger/
+├── CMakeLists.txt
+├── README.md
+├── .gitignore
+├── main.cpp                  # CLI menu (hello for now)
+├── include/
+│   ├── picosha2.h            # third-party, header-only SHA-256 (do not edit)
+│   ├── Hasher.h              # Phase B
+│   ├── Transaction.h         # Phase C
+│   ├── Block.h               # Phase D
+│   ├── Blockchain.h          # later: linked list, validation, mining pool
+│   └── Node.h                # later: simulated decentralized node
+├── src/
+│   ├── Hasher.cpp            # Phase B (includes picosha2.h)
+│   ├── Transaction.cpp       # Phase C
+│   ├── Block.cpp             # Phase D
+│   ├── Blockchain.cpp        # later
+│   └── Node.cpp              # later
+├── tests/
+│   ├── test_hasher.cpp       # sha256("abc") known vector
+│   ├── test_transaction.cpp  # "A->B:10.00" format
+│   ├── test_block.cpp        # changing nonce/amount changes hash
+│   └── test_chain.cpp        # later: tamper, broken link, difficulty
+├── docs/
+│   └── (UML diagram, flowchart later)
+└── build/                    # created by CMake, git-ignored
+```
+
+### Create it in one go
+
+```bash
+mkdir -p ledger/{include,src,tests,docs}
+cd ledger
+touch main.cpp CMakeLists.txt README.md .gitignore
+touch include/{Hasher.h,Transaction.h,Block.h,Blockchain.h,Node.h}
+touch src/{Hasher.cpp,Transaction.cpp,Block.cpp,Blockchain.cpp,Node.cpp}
+touch tests/{test_hasher.cpp,test_transaction.cpp,test_block.cpp,test_chain.cpp}
+echo "build/" > .gitignore
+curl -L -o include/picosha2.h https://raw.githubusercontent.com/okdshin/PicoSHA2/master/picosha2.h
+```
+
+### Starter `CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.10)
+project(LedgerSimulator CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include_directories(include)
+
+add_executable(ledger
+    main.cpp
+    src/Hasher.cpp
+    src/Transaction.cpp
+    src/Block.cpp
+)
+```
+
+Add `Blockchain.cpp` and `Node.cpp` to `add_executable` when you reach those phases. An empty `.cpp` file in the list is harmless.
+
+### Using picosha2 in `Hasher.cpp`
+
+```cpp
+#include "Hasher.h"
+#include "picosha2.h"
+
+std::string Hasher::sha256(const std::string& s) {
+    return picosha2::hash256_hex_string(s);
+}
+```
+
+Build with:
+
+```bash
+mkdir build && cd build && cmake .. && cmake --build . && ./ledger
+```
+
+Say "next" when you want Phase E (the linked-list `Blockchain`) in the same one-action-per-step format.
+
+## Prompt 5:
+
+give file contents for all files now
+
+## Response 5:
+
+I'll write the full project, compile it, and run the tests before handing it over.
+
+Files are written. Next I'm building and running the tests. One fix first: release builds switch off `assert`, so the tests would pass without checking anything.
+
+I've sent you `ledger.zip` with every file in the folder structure, ready to build. The project compiles with no warnings. All four test programs pass from a fresh unzip. A scripted run of the CLI also worked: add transaction, mine, validate, tamper (reported as `INVALID at block 1`), balance, and the 3-node demo, where the tampered chain is rejected.
+
+To use it, unzip, then run `mkdir build && cd build && cmake .. && cmake --build . && ./ledger`. Run `ctest` in the same folder for the tests.
+
+**What's in it**
+- `Hasher` wraps the real `picosha2.h`, which I fetched from the PicoSHA2 repo.
+- `Transaction` and `Block` do the hashing and proof-of-work mining.
+- `Blockchain` is the linked list. It frees its blocks in the destructor and deep-copies them on copy. It also covers the genesis block, the pending pool, mining, validation, balances, the tamper demo and chain replacement.
+- `Node` is a simulated participant that only accepts a chain if it is longer and valid.
+- `main.cpp` is the CLI menu. `tests/` holds one test program per component.
+
+**Choices I made**
+- The tests use `assert`, and release builds normally switch that off, so `CMakeLists.txt` turns it back on for the tests.
+- Balances can go negative, and there is no mining reward. I noted this as out of scope in the README.
+- I left out the JSON save/load step, since it needs an extra library.
+
+**Two stray files:** the folder already had `include/sha256.h` and `tests/test_phases_a_to_d.cpp` from an earlier version. Nothing uses them now that you've switched to picosha2, so I left them out of the zip. They are still in the folder here, untouched.
