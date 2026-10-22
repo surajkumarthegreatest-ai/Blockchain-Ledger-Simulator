@@ -2,14 +2,17 @@
 
 #include <chrono>
 #include <sstream>
+#include <stdexcept>
 
 #include "Hasher.h"
 
-Block::Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash)
+Block::Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash,
+             int difficulty)
     : index(index),
       timestamp(std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count()),
+      difficulty(difficulty),
       txs(txs),
       prevHash(prevHash),
       hash(),
@@ -20,11 +23,12 @@ Block::Block(int index, const std::vector<Transaction>& txs, const std::string& 
 
 std::string Block::serialize() const {
     std::ostringstream out;
-    out << index << timestamp;
+    out << index << '|' << timestamp << '|' << difficulty << '|' << txs.size() << '|';
     for (const Transaction& tx : txs) {
-        out << tx.toString();
+        const std::string s = tx.toString();
+        out << s.size() << ':' << s << '|';     // length prefix: no ambiguity between txs
     }
-    out << prevHash << nonce;
+    out << prevHash << '|' << nonce;
     return out.str();
 }
 
@@ -44,7 +48,10 @@ bool Block::meetsDifficulty(const std::string& h, int difficulty) {
     return true;
 }
 
-void Block::mine(int difficulty) {
+void Block::mine() {
+    if (difficulty < 0 || difficulty > 64) {
+        throw std::invalid_argument("Block::mine: difficulty must be between 0 and 64");
+    }
     nonce = 0;
     hash = calculateHash();
     while (!meetsDifficulty(hash, difficulty)) {

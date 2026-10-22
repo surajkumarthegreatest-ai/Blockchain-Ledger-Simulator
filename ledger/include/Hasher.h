@@ -2,6 +2,7 @@
 #define HASHER_H
 
 #include <string>
+
 // Thin wrapper around the SHA-256 library (picosha2).
 // The rest of the project only ever calls Hasher, so the library can be swapped later.
 class Hasher {

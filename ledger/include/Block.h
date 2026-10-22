@@ -11,22 +11,26 @@ class Block {
 public:
     int index;
     long long timestamp;               // seconds since epoch
+    int difficulty;                    // leading zero hex digits this block's hash must have
     std::vector<Transaction> txs;
     std::string prevHash;
     std::string hash;
     int nonce;
     Block* next;                       // nullptr for the tail
 
-    Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash);
+    Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash,
+          int difficulty);
 
-    // index + timestamp + every transaction string + prevHash + nonce, concatenated.
+    // Unambiguous text form of every hashed field. Fields are separated by '|' and each
+    // transaction is length-prefixed, so different field values can never serialize equally.
     std::string serialize() const;
 
     // SHA-256 of serialize().
     std::string calculateHash() const;
 
     // Proof of Work: increment nonce until the hash starts with `difficulty` zeros.
-    void mine(int difficulty);
+    // Throws std::invalid_argument if difficulty is outside 0..64.
+    void mine();
 
     // True if `h` starts with `difficulty` zeros.
     static bool meetsDifficulty(const std::string& h, int difficulty);

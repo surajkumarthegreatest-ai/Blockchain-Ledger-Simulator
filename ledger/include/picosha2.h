@@ -1,5 +1,3 @@
-// Using this File from "https://github.com/okdshin/PicoSHA2/blob/master/picosha2.h"
-
 /*
 The MIT License (MIT)
 
