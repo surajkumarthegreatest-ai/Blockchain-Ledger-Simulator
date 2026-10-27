@@ -2,6 +2,7 @@
 #define BLOCKCHAIN_H
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Block.h"
@@ -20,6 +21,21 @@ struct ChainConfig {
         return initialDifficulty == o.initialDifficulty && targetBlockSeconds == o.targetBlockSeconds &&
                adjustInterval == o.adjustInterval && minDifficulty == o.minDifficulty &&
                maxDifficulty == o.maxDifficulty && reward == o.reward;
+    }
+};
+
+// Running ledger state: who owns what, and the last nonce each sender used.
+struct LedgerState {
+    std::unordered_map<std::string, long long> balance;
+    std::unordered_map<std::string, long long> lastNonce;
+
+    long long balanceOf(const std::string& a) const {
+        auto it = balance.find(a);
+        return it == balance.end() ? 0 : it->second;
+    }
+    long long lastNonceOf(const std::string& a) const {
+        auto it = lastNonce.find(a);
+        return it == lastNonce.end() ? 0 : it->second;
     }
 };
 
@@ -93,6 +109,11 @@ private:
     int size;
     ChainConfig cfg;
     std::vector<Transaction> pending;
+    mutable LedgerState confirmedState;
+    mutable bool stateDirty;
+
+    void ensureState() const;
+    void rebuildState() const;
 
     void appendBlock(Block* block);   // takes ownership
     void clearBlocks();

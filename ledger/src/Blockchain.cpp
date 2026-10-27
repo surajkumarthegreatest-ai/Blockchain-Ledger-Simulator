@@ -7,21 +7,6 @@
 
 namespace {
 
-// Running ledger used while replaying a chain: who owns what, and the last nonce each sender used.
-struct LedgerState {
-    std::unordered_map<std::string, long long> balance;
-    std::unordered_map<std::string, long long> lastNonce;
-
-    long long balanceOf(const std::string& a) const {
-        auto it = balance.find(a);
-        return it == balance.end() ? 0 : it->second;
-    }
-    long long lastNonceOf(const std::string& a) const {
-        auto it = lastNonce.find(a);
-        return it == lastNonce.end() ? 0 : it->second;
-    }
-};
-
 // Applies a transaction that has already been checked.
 void applyTx(LedgerState& st, const Transaction& tx) {
     if (!tx.isCoinbase()) {
@@ -74,14 +59,6 @@ bool checkAgainstState(const LedgerState& st, const Transaction& tx, std::string
     return true;
 }
 
-LedgerState stateOfChain(const Block* head) {
-    LedgerState st;
-    for (const Block* cur = head; cur != nullptr; cur = cur->next) {
-        for (const Transaction& tx : cur->txs) applyTx(st, tx);
-    }
-    return st;
-}
-
 ChainConfig normalize(ChainConfig c) {
     c.adjustInterval = std::max(2, c.adjustInterval);
     c.targetBlockSeconds = std::max(1, c.targetBlockSeconds);
@@ -104,8 +81,24 @@ long long nowSeconds() {
 // construction, copying, destruction
 // ---------------------------------------------------------------------------
 
+void Blockchain::ensureState() const {
+    if (stateDirty) {
+        rebuildState();
+    }
+}
+
+void Blockchain::rebuildState() const {
+    confirmedState = LedgerState();
+    for (const Block* cur = head; cur != nullptr; cur = cur->next) {
+        for (const Transaction& tx : cur->txs) {
+            applyTx(confirmedState, tx);
+        }
+    }
+    stateDirty = false;
+}
+
 Blockchain::Blockchain(const ChainConfig& config)
-    : head(nullptr), tail(nullptr), size(0), cfg(normalize(config)) {
+    : head(nullptr), tail(nullptr), size(0), cfg(normalize(config)), stateDirty(false) {
     // Genesis block: index 0, prevHash "0", no transactions, mined like any other block.
     Block* genesis = new Block(0, {}, "0", cfg.initialDifficulty);
     genesis->mine();
@@ -113,16 +106,23 @@ Blockchain::Blockchain(const ChainConfig& config)
 }
 
 Blockchain::Blockchain(const Blockchain& other)
-    : head(nullptr), tail(nullptr), size(0), cfg(other.cfg), pending(other.pending) {
+    : head(nullptr), tail(nullptr), size(0), cfg(other.cfg), pending(other.pending),
+      stateDirty(other.stateDirty) {
     copyBlocksFrom(other);
+    other.ensureState();
+    confirmedState = other.confirmedState;
 }
 
 Blockchain& Blockchain::operator=(const Blockchain& other) {
     if (this != &other) {
-        clearBlocks();
-        cfg = other.cfg;
-        pending = other.pending;
-        copyBlocksFrom(other);
+        Blockchain temp(other);
+        std::swap(head, temp.head);
+        std::swap(tail, temp.tail);
+        std::swap(size, temp.size);
+        std::swap(cfg, temp.cfg);
+        std::swap(pending, temp.pending);
+        std::swap(confirmedState, temp.confirmedState);
+        std::swap(stateDirty, temp.stateDirty);
     }
     return *this;
 }
@@ -139,6 +139,11 @@ void Blockchain::appendBlock(Block* block) {
         tail = block;
     }
     ++size;
+    if (!stateDirty) {
+        for (const Transaction& tx : block->txs) {
+            applyTx(confirmedState, tx);
+        }
+    }
 }
 
 void Blockchain::clearBlocks() {
@@ -150,6 +155,8 @@ void Blockchain::clearBlocks() {
     }
     head = tail = nullptr;
     size = 0;
+    confirmedState = LedgerState();
+    stateDirty = false;
 }
 
 void Blockchain::copyBlocksFrom(const Blockchain& other) {
@@ -178,7 +185,8 @@ bool Blockchain::addTransaction(const Transaction& tx, std::string* error) {
         return false;
     }
     // Ledger state as it will be once everything already pending is mined.
-    LedgerState st = stateOfChain(head);
+    ensureState();
+    LedgerState st = confirmedState;
     for (const Transaction& p : pending) applyTx(st, p);
     if (!checkAgainstState(st, tx, why)) {
         if (error) *error = why;
@@ -189,10 +197,11 @@ bool Blockchain::addTransaction(const Transaction& tx, std::string* error) {
 }
 
 const Block* Blockchain::minePending(const std::string& minerAddress) {
-    if (badName(minerAddress)) return nullptr;
+    if (badName(minerAddress) || tail == nullptr) return nullptr;
 
     int difficulty = nextDifficulty();
-    LedgerState st = stateOfChain(head);
+    ensureState();
+    LedgerState st = confirmedState;
 
     std::vector<Transaction> txs;
     Transaction reward = Transaction::coinbase(minerAddress, cfg.reward);
@@ -210,14 +219,16 @@ const Block* Blockchain::minePending(const std::string& minerAddress) {
     }
     pending.clear();
 
-    Block* block = new Block(tail->index + 1, txs, tail->hash, difficulty);
+    long long blockTime = std::max(nowSeconds(), tail->timestamp + 1);
+    Block* block = new Block(tail->index + 1, txs, tail->hash, difficulty, blockTime);
     block->mine();
     appendBlock(block);
     return block;
 }
 
 long long Blockchain::getBalance(const std::string& address) const {
-    return stateOfChain(head).balanceOf(address);
+    ensureState();
+    return confirmedState.balanceOf(address);
 }
 
 long long Blockchain::availableBalance(const std::string& address) const {
@@ -229,7 +240,8 @@ long long Blockchain::availableBalance(const std::string& address) const {
 }
 
 long long Blockchain::nextNonce(const std::string& address) const {
-    LedgerState st = stateOfChain(head);
+    ensureState();
+    LedgerState st = confirmedState;
     for (const Transaction& p : pending) applyTx(st, p);
     return st.lastNonceOf(address) + 1;
 }
@@ -284,11 +296,43 @@ unsigned long long Blockchain::cumulativeWork() const {
 }
 
 bool Blockchain::replaceChain(const Blockchain& other) {
+    if (this == &other) return false;
     if (!(other.cfg == cfg)) return false;       // different rules: not our chain
     if (!other.isValid()) return false;
     if (other.cumulativeWork() <= cumulativeWork()) return false;
+
+    // Exception-safe copy: build new blocks before touching our own
+    Block* newHead = nullptr;
+    Block* newTail = nullptr;
+    int newSize = 0;
+    try {
+        for (const Block* cur = other.head; cur != nullptr; cur = cur->next) {
+            Block* copy = new Block(*cur);
+            copy->next = nullptr;
+            if (newTail == nullptr) {
+                newHead = newTail = copy;
+            } else {
+                newTail->next = copy;
+                newTail = copy;
+            }
+            ++newSize;
+        }
+    } catch (...) {
+        while (newHead != nullptr) {
+            Block* nxt = newHead->next;
+            delete newHead;
+            newHead = nxt;
+        }
+        throw;
+    }
+
     clearBlocks();
-    copyBlocksFrom(other);
+    head = newHead;
+    tail = newTail;
+    size = newSize;
+    other.ensureState();
+    confirmedState = other.confirmedState;
+    stateDirty = other.stateDirty;
     return true;
 }
 
@@ -319,6 +363,7 @@ bool Blockchain::isValid(int* badIndex, std::string* reason) const {
 
         if (prev == nullptr) {
             if (cur->prevHash != "0") return fail(idx, "genesis prevHash must be \"0\"");
+            if (cur->timestamp <= 0) return fail(idx, "genesis timestamp must be positive");
         } else if (cur->prevHash != prev->hash) {
             return fail(idx, "prevHash does not match previous block's hash");
         }
@@ -332,8 +377,8 @@ bool Blockchain::isValid(int* badIndex, std::string* reason) const {
             return fail(idx, "hash does not meet proof-of-work difficulty");
         }
 
-        if (prev != nullptr && cur->timestamp < prev->timestamp) {
-            return fail(idx, "timestamp is earlier than the previous block's");
+        if (prev != nullptr && cur->timestamp <= prev->timestamp) {
+            return fail(idx, "timestamp is earlier than or equal to the previous block's");
         }
         if (cur->timestamp > now + maxFuture) {
             return fail(idx, "timestamp is too far in the future");
@@ -395,12 +440,15 @@ bool Blockchain::tamper(int index, long long newAmount) {
     } else {
         block->txs.back().amount = newAmount;
     }
+    stateDirty = true;
     // Deliberately does NOT recompute the hash: that is what validation must catch.
     return true;
 }
 
 const Block* Blockchain::appendUnchecked(const std::vector<Transaction>& txs) {
-    Block* block = new Block(tail->index + 1, txs, tail->hash, nextDifficulty());
+    if (tail == nullptr) return nullptr;
+    long long blockTime = std::max(nowSeconds(), tail->timestamp + 1);
+    Block* block = new Block(tail->index + 1, txs, tail->hash, nextDifficulty(), blockTime);
     block->mine();
     appendBlock(block);
     return block;

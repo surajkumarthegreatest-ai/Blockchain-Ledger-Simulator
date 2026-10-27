@@ -8,9 +8,9 @@
 #include "Hasher.h"
 
 Block::Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash,
-             int difficulty)
+             int difficulty, long long ts)
     : index(index),
-      timestamp(std::chrono::duration_cast<std::chrono::seconds>(
+      timestamp(ts >= 0 ? ts : std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch())
                     .count()),
       difficulty(difficulty),
