@@ -246,12 +246,20 @@ int Blockchain::computeExpectedDifficulty(const std::vector<const Block*>& prefi
     const int current = prefix.back()->difficulty;
     if (n % config.adjustInterval != 0) return current; // only adjust every adjustInterval blocks
 
-    // Look at the last `adjustInterval` blocks: that is (adjustInterval - 1) gaps in time.
-    const Block* first = prefix[static_cast<size_t>(n - config.adjustInterval)];
+    // Determine the measurement window:
+    // For the very first adjustment epoch (n == adjustInterval), the chain starts at genesis
+    // (prefix[0]), so there are (adjustInterval - 1) intervals between blocks 0 and (n - 1).
+    // For all subsequent epochs (n > adjustInterval), the window starts at the final block
+    // of the PREVIOUS epoch: prefix[n - adjustInterval - 1].
+    // This measures exactly `adjustInterval` block intervals with ZERO skipped time between epochs.
+    const bool isFirstEpoch = (n == config.adjustInterval);
+    const size_t firstIdx = isFirstEpoch ? 0 : static_cast<size_t>(n - config.adjustInterval - 1);
+    const Block* first = prefix[firstIdx];
     const Block* last = prefix.back();
-    const long long actual = last->timestamp - first->timestamp;
-    const long long expected =
-        static_cast<long long>(config.adjustInterval - 1) * config.targetBlockSeconds;
+
+    const int numGaps = isFirstEpoch ? (config.adjustInterval - 1) : config.adjustInterval;
+    const long long actual = std::max(0LL, last->timestamp - first->timestamp);
+    const long long expected = static_cast<long long>(numGaps) * config.targetBlockSeconds;
 
     int next = current;
     if (actual * 2 < expected) {
