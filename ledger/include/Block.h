@@ -1,6 +1,7 @@
 #ifndef BLOCK_H
 #define BLOCK_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,7 @@ public:
     std::vector<Transaction> txs;
     std::string prevHash;
     std::string hash;
-    int nonce;
+    uint64_t nonce;                    // 64-bit unsigned: never overflows during PoW search
     Block* next;                       // nullptr for the tail
 
     Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash,
