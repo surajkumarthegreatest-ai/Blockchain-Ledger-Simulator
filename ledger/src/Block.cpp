@@ -1,6 +1,7 @@
 #include "Block.h"
 
 #include <chrono>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 
@@ -55,7 +56,17 @@ void Block::mine() {
     nonce = 0;
     hash = calculateHash();
     while (!meetsDifficulty(hash, difficulty)) {
-        ++nonce;
+        if (nonce == std::numeric_limits<uint64_t>::max()) {
+            // All 2^64 nonces exhausted without a solution (only possible at extreme
+            // difficulty). Re-stamp the block to the current second, which changes
+            // the search space, then restart from nonce 0 — exactly what Bitcoin does.
+            timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+            nonce = 0;
+        } else {
+            ++nonce;
+        }
         hash = calculateHash();
     }
 }
