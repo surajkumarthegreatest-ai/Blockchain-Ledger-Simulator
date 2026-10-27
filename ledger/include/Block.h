@@ -20,7 +20,7 @@ public:
     Block* next;                       // nullptr for the tail
 
     Block(int index, const std::vector<Transaction>& txs, const std::string& prevHash,
-          int difficulty);
+          int difficulty, long long timestamp = -1);
 
     // Unambiguous text form of every hashed field. Fields are separated by '|' and each
     // transaction is length-prefixed, so different field values can never serialize equally.
