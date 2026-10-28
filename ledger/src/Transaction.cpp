@@ -45,6 +45,7 @@ bool Transaction::verifySignature() const {
         return senderPubKey.empty() && signature.empty();
     }
     if (senderPubKey.empty() || signature.empty()) return false;
+    if (sender.find('|') != std::string::npos || receiver.find('|') != std::string::npos) return false;
     // 1. The claimed sender address must really belong to the public key supplied.
     if (sender != Signer::addressFromPublicKey(senderPubKey)) return false;
     // 2. The signature must be valid for this exact payload under that public key.

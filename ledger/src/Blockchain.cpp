@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <unordered_map>
 
 namespace {
@@ -187,7 +188,12 @@ bool Blockchain::addTransaction(const Transaction& tx, std::string* error) {
     // Ledger state as it will be once everything already pending is mined.
     ensureState();
     LedgerState st = confirmedState;
-    for (const Transaction& p : pending) applyTx(st, p);
+    for (const Transaction& p : pending) {
+        std::string discard;
+        if (checkAgainstState(st, p, discard)) {
+            applyTx(st, p);
+        }
+    }
     if (!checkAgainstState(st, tx, why)) {
         if (error) *error = why;
         return false;
@@ -232,17 +238,26 @@ long long Blockchain::getBalance(const std::string& address) const {
 }
 
 long long Blockchain::availableBalance(const std::string& address) const {
-    long long bal = getBalance(address);
+    ensureState();
+    LedgerState st = confirmedState;
     for (const Transaction& p : pending) {
-        if (p.sender == address) bal -= p.amount;
+        std::string discard;
+        if (checkAgainstState(st, p, discard)) {
+            applyTx(st, p);
+        }
     }
-    return bal;
+    return st.balanceOf(address);
 }
 
 long long Blockchain::nextNonce(const std::string& address) const {
     ensureState();
     LedgerState st = confirmedState;
-    for (const Transaction& p : pending) applyTx(st, p);
+    for (const Transaction& p : pending) {
+        std::string discard;
+        if (checkAgainstState(st, p, discard)) {
+            applyTx(st, p);
+        }
+    }
     return st.lastNonceOf(address) + 1;
 }
 
@@ -290,7 +305,11 @@ unsigned long long Blockchain::cumulativeWork() const {
     unsigned long long work = 0;
     for (const Block* cur = head; cur != nullptr; cur = cur->next) {
         int d = std::min(15, std::max(0, cur->difficulty));
-        work += 1ULL << (4 * d);   // each hex zero = 16x more expected hashing
+        unsigned long long blockWork = 1ULL << (4 * d);   // each hex zero = 16x more expected hashing
+        if (std::numeric_limits<unsigned long long>::max() - work < blockWork) {
+            return std::numeric_limits<unsigned long long>::max(); // saturate on overflow
+        }
+        work += blockWork;
     }
     return work;
 }

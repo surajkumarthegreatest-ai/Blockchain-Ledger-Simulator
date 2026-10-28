@@ -1,5 +1,6 @@
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <string>
@@ -131,6 +132,10 @@ void doTamper(Blockchain& chain) {
     long long idx, amt;
     if (!readLongLong("Block index to tamper: ", idx) || !readLongLong("New amount: ", amt)) {
         std::cout << "Invalid input.\n";
+        return;
+    }
+    if (idx < 0 || idx >= chain.length() || idx > std::numeric_limits<int>::max()) {
+        std::cout << "No block with index " << idx << ".\n";
         return;
     }
     if (chain.tamper(static_cast<int>(idx), amt)) {

@@ -140,5 +140,6 @@ bool Signer::verify(const std::string& publicKeyHex, const std::string& message,
 }
 
 std::string Signer::addressFromPublicKey(const std::string& publicKeyHex) {
+    if (publicKeyHex.empty()) return "";
     return Hasher::sha256(publicKeyHex).substr(0, 40);
 }
