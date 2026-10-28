@@ -1,0 +1,720 @@
+\documentclass[11pt,a4paper]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx} % Times Roman typography matching the reference report
+\usepackage[margin=1in]{geometry}
+\usepackage{fancyhdr}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{setspace}
+\usepackage{tikz}
+\usetikzlibrary{shapes.multipart,shapes.geometric,arrows.meta,positioning,calc,fit,backgrounds}
+\usepackage{listings}
+\usepackage{microtype}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    urlcolor=blue,
+    citecolor=black
+}
+
+% Page Header and Footer configuration matching the reference specification
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Blockchain Ledger Simulator (Cryptographic Ledger in C++)}
+\fancyhead[R]{\small Chapter 1: Project Report}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Section formatting styles
+\setcounter{chapter}{1}
+
+\begin{document}
+
+% ==========================================
+% PAGE 1: CHAPTER TITLE & SECTION 1.1
+% ==========================================
+\noindent{\Huge \textbf{Chapter 1}}\\[0.6em]
+{\LARGE \textbf{Blockchain Ledger Simulator (C++17 Implementation)}}\\[1em]
+\noindent\textbf{Authors:} Tarun K, Suraj Kumar\\[0.5em]
+\noindent\textbf{Project Repository:} \texttt{Blockchain-Ledger-Simulator} \textbar\ \textbf{Language:} C++17 \textbar\ \textbf{Build Tool:} CMake 3.16+
+
+\vspace{0.8em}
+\hrule
+\vspace{1.2em}
+
+\section{Introduction and Problem Statement}
+
+A blockchain is fundamentally an append-only, distributed ledger of records organized into cryptographically linked batches termed blocks. Each block references the cryptographic digest of its immediate predecessor, forming a linear chain where altering any past record invalidates every subsequent block hash. When paired with digital signatures and a consensus mechanism, this structure enables multiple independent participants to agree on an authentic transaction history without a central coordinator.
+
+Modern production blockchains (such as Bitcoin or Ethereum) introduce considerable operational complexity, including distributed peer-to-peer gossip networking, disk-backed key-value stores (such as LevelDB or RocksDB), and virtual execution machines for smart contracts. While these subsystems are essential in production networks, they obscure the core mechanics of how blockchains actually work.
+
+The primary goal of this project is to implement a clean, robust, and fully functional in-memory blockchain simulator in modern C++17. The project models the essential building blocks of a cryptocurrency ledger from first principles using standard object-oriented programming:
+\begin{itemize}
+    \item Managing block storage directly in memory using a custom heap-allocated singly linked list with explicit pointer ownership and RAII memory safety;
+    \item Providing real cryptographic primitives through OpenSSL's C API (using the \texttt{secp256k1} elliptic curve for digital signatures) and an embedded SHA-256 hashing engine;
+    \item Implementing Proof-of-Work mining with an inter-epoch difficulty retargeting algorithm to keep block creation pacing stable;
+    \item Enforcing an account-based ledger state machine that prevents double-spending, overdrafts, and replay attacks using account-level sequential nonces;
+    \item Simulating multi-node consensus resolution where independent nodes resolve ledger forks by adopting the valid branch exhibiting the highest cumulative proof-of-work.
+\end{itemize}
+
+\subsection*{Problem Statement and Core Requirements}
+
+The objective is to design, implement, and rigorously test an end-to-end C++17 library and interactive console application that simulates a decentralized cryptographic ledger. The system must fulfill six concrete engineering requirements:
+
+\begin{enumerate}
+    \item \textbf{Explicit Pointer-Linked Block Storage and Memory Management:} 
+    Blocks must be structured as nodes in a custom singly linked list connected via raw pointers (\texttt{Block* next}). The owning class, \texttt{Blockchain}, must manage the list lifecycle through explicit allocation (\texttt{new}) and deallocation (\texttt{delete}), providing deep-copy copy constructors, deep-copy assignment operators, and a leak-free destructor adhering to the C++ Rule of Three.
+    
+    \item \textbf{Asymmetric Cryptography and Elliptic Curve Signatures:}
+    The simulator must not use mock or trivial signatures. It must integrate OpenSSL's native EVP interface to generate authentic \texttt{secp256k1} key pairs, derive deterministic 160-bit hexadecimal wallet addresses from public keys, and produce and verify DER-encoded ECDSA signatures across serialized transaction payloads.
+    
+    \item \textbf{Deterministic Serialization and Proof-of-Work Mining:}
+    Transactions and block headers must be serialized using unambiguous pipe-delimited strings to prevent field injection. Mining must iteratively increment a 64-bit unsigned nonce until the block's SHA-256 hash contains a target number of leading zero hex digits, incorporating overflow handling to ensure long-running mining does not enter undefined behavior.
+    
+    \item \textbf{Dynamic Multi-Epoch Difficulty Adjustment:}
+    Mining difficulty must dynamically adjust every $N$ blocks (\texttt{adjustInterval}) based on the actual elapsed wall-clock time compared to expected time ($N \times \text{targetBlockSeconds}$). The calculation must correctly measure time intervals between epoch boundary blocks, clamp difficulty within configured minimum and maximum bounds, and handle zero-elapsed time edge cases gracefully.
+    
+    \item \textbf{State Machine Accounting and Anti-Replay Nonce Tracking:}
+    The ledger must maintain account balances and reject overdrafts. To prevent transaction replay attacks (re-broadcasting a valid signed transaction), every non-coinbase transaction must include a sequential per-account counter (\texttt{nonce}) that matches the sender's next expected transaction index. Unconfirmed transactions in the memory pool must be tracked against pending balances.
+    
+    \item \textbf{Multi-Node Fork Resolution via Cumulative Work:}
+    Independent simulated \texttt{Node} instances must be capable of receiving foreign blockchains and deciding whether to adopt them. Replacement must be governed by cumulative proof-of-work ($\sum 16^{\text{difficulty}}$) rather than simple block count, ensuring nodes always follow the chain representing the most computational effort, provided the incoming chain is valid and shares identical configuration parameters.
+\end{enumerate}
+
+\subsection*{End-User and Developer Perspective}
+
+From a software developer's perspective, the simulator is packaged as a static library (\texttt{ledger\_core}) that exposes clean, modular header files in \texttt{ledger/include/}:
+\begin{itemize}
+    \item \texttt{Wallet.h}: High-level interface for creating user accounts, managing cryptographic keys, and generating signed transaction objects.
+    \item \texttt{Blockchain.h}: The central ledger engine exposing methods to submit transactions, mine pending blocks, query confirmed and available balances, validate chain integrity, and simulate chain reorganizations.
+    \item \texttt{Node.h}: Wrapper representing an autonomous participant on a network holding a private \texttt{Blockchain} instance.
+\end{itemize}
+
+For end users and testers, the system provides an interactive console application (\texttt{main.cpp}) offering a menu-driven interface with ten distinct commands. Users can create named wallets, check balances, transfer coins, mine blocks, inspect raw block structures, tamper with historical blocks to observe validation failures, forge signatures, and trigger multi-node fork resolution. In addition, an automated CTest test suite compiles seven independent test suites verifying every component without manual intervention.
+
+\clearpage
+
+% ==========================================
+% PAGE 2: SECTION 1.2 SCOPE AND FEATURE SET
+% ==========================================
+\section{Scope and Feature Set}
+
+The implementation strictly reflects the code located in the \texttt{ledger/} directory. The functional scope encompasses the following fourteen specific features:
+
+\begin{itemize}
+    \item \textbf{Singly Linked List Block Storage (\texttt{Block.h}, \texttt{Blockchain.h}):}\\
+    Blocks are stored as a singly linked list where each \texttt{Block} node contains a member pointer \texttt{Block* next} initialized to \texttt{nullptr}. The \texttt{Blockchain} class maintains \texttt{head} and \texttt{tail} pointers along with an integer \texttt{size}. New blocks are appended to \texttt{tail} in $\mathcal{O}(1)$ time. Traversal from \texttt{head} to \texttt{tail} allows sequential block inspection and validation. The destructor walks the list node-by-node and frees every allocated block.
+
+    \item \textbf{SHA-256 Cryptographic Hashing (\texttt{Hasher.h}, \texttt{picosha2.h}):}\\
+    The \texttt{Hasher} class provides a static method \texttt{Hasher::sha256(const std::string\&)} wrapping the embedded header-only \texttt{picosha2} library. It produces a 64-character lowercase hexadecimal hash digest. All block hash calculations and wallet address derivations route through this single utility, decoupling the rest of the application from hashing internals.
+
+    \item \textbf{Native OpenSSL ECDSA Signatures (\texttt{Signer.h}, \texttt{Signer.cpp}):}\\
+    The \texttt{Signer} class provides static methods that interact directly with the OpenSSL C API:
+    \begin{itemize}
+        \item \texttt{generateKeyPair()}: Uses \texttt{EVP\_EC\_KEY\_new\_by\_curve\_name(NID\_secp256k1)} to generate an authentic elliptic curve key pair, serializing the private and public keys as DER hex strings.
+        \item \texttt{sign()}: Deserializes a private key into an \texttt{EVP\_PKEY}, signs an arbitrary message using SHA-256 with \texttt{EVP\_DigestSignInit}, and outputs a DER-encoded signature hex string.
+        \item \texttt{verify()}: Deserializes a public key into an \texttt{EVP\_PKEY} and validates the signature against the message using \texttt{EVP\_DigestVerifyInit}.
+    \end{itemize}
+
+    \item \textbf{Deterministic 160-Bit Hexadecimal Wallet Addresses (\texttt{Signer.cpp}):}\\
+    Wallet addresses are derived deterministically by hashing the hexadecimal public key with SHA-256 and extracting the first 40 hexadecimal characters (160 bits):
+    \begin{equation}
+        \text{Address} = \text{SHA256}(\text{PublicKeyHex})[0\dots 39]
+    \end{equation}
+    This mimics the address length conventions of Ethereum while remaining clean and deterministic. If the public key string is empty or invalid, address generation returns an empty string.
+
+    \item \textbf{Cryptographic Wallet Container (\texttt{Wallet.h}, \texttt{Wallet.cpp}):}\\
+    The \texttt{Wallet} class stores a \texttt{KeyPair} (private key and public key) and its corresponding address string. It acts as a transaction factory: the \texttt{createTransaction(receiver, amount, nonce)} method populates a \texttt{Transaction} structure, retrieves the signature payload, signs it using the private key, and returns a fully initialized, signed transaction ready for broadcast.
+
+    \item \textbf{Transaction Model and Serialization (\texttt{Transaction.h}, \texttt{Transaction.cpp}):}\\
+    A \texttt{Transaction} contains six core fields: \texttt{sender}, \texttt{receiver}, \texttt{amount} (int64), \texttt{nonce} (int64), \texttt{senderPubKey}, and \texttt{signature}.
+    The signing payload is serialized as:
+    \begin{equation*}
+        \text{Payload} = \texttt{sender} \parallel \text{"\textbar"} \parallel \texttt{receiver} \parallel \text{"\textbar"} \parallel \texttt{amount} \parallel \text{"\textbar"} \parallel \texttt{nonce}
+    \end{equation*}
+    The verification routine checks that the sender address matches the public key digest, verifies that neither address contains unexpected delimiter characters, and verifies the ECDSA signature against the payload.
+
+    \item \textbf{Coinbase Transaction and Block Rewards (\texttt{Transaction.h}, \texttt{Blockchain.cpp}):}\\
+    Blocks can contain a special transaction generated by the system:
+    \begin{equation*}
+        \texttt{Transaction::coinbase(minerAddress, reward)}
+    \end{equation*}
+    A coinbase transaction has \texttt{sender = "COINBASE"}, \texttt{nonce = 0}, and empty signature/public key fields. It awards \texttt{cfg.reward} coins (default 50) to the miner and is exempted from signature and nonce checks. It must always be the first transaction in a mined block.
+
+    \item \textbf{Proof-of-Work Mining Engine (\texttt{Block.h}, \texttt{Block.cpp}):}\\
+    The \texttt{Block::mine()} method executes the proof-of-work algorithm. The block header fields (\texttt{index}, \texttt{timestamp}, \texttt{difficulty}, \texttt{prevHash}, serialized transactions, and \texttt{nonce}) are concatenated into a single string. The method loops, incrementing a 64-bit unsigned integer (\texttt{uint64\_t nonce}), calculating the SHA-256 hash until the digest starts with \texttt{difficulty} number of \texttt{'0'} characters. If the 64-bit nonce reaches its maximum value (\texttt{UINT64\_MAX}) without finding a solution, the timestamp is refreshed to the current time, the nonce resets to 0, and searching continues without integer overflow.
+
+    \item \textbf{Dynamic Multi-Epoch Difficulty Adjustment (\texttt{Blockchain.cpp}):}\\
+    Mining difficulty is not static; it recalculates every \texttt{cfg.adjustInterval} blocks (default 5 blocks). The static function \texttt{Blockchain::computeExpectedDifficulty} calculates the actual time elapsed between the boundary of the previous epoch and the latest block:
+    \begin{equation}
+        \text{actual} = \text{last}\to\text{timestamp} - \text{first}\to\text{timestamp}
+    \end{equation}
+    \begin{equation}
+        \text{expected} = \text{adjustInterval} \times \text{targetBlockSeconds}
+    \end{equation}
+    If $\text{actual} \times 2 < \text{expected}$, blocks were mined twice as fast as targeted, so difficulty increases by $+1$. If $\text{actual} > \text{expected} \times 2$, mining was too slow, so difficulty decreases by $-1$. Otherwise, difficulty remains unchanged. The result is strictly clamped between \texttt{minDifficulty} (1) and \texttt{maxDifficulty} (5).
+
+    \item \textbf{Incremental Ledger State Caching (\texttt{Blockchain.h}, \texttt{Blockchain.cpp}):}\\
+    To avoid walking the entire blockchain on every balance or nonce query, \texttt{Blockchain} maintains an internal cache:
+    \begin{equation*}
+        \texttt{struct LedgerState \{ unordered\_map<string, long long> balances; unordered\_map<string, long long> lastNonce; \}}
+    \end{equation*}
+    When a block is appended, the confirmed state is updated incrementally in $\mathcal{O}(\text{transactions})$ time. Queries like \texttt{getBalance(address)} and \texttt{nextNonce(address)} execute in $\mathcal{O}(1)$ average time. If an unchecked block or chain replacement occurs, an internal \texttt{stateDirty} flag triggers a complete state rebuild on the next query.
+
+    \item \textbf{Mempool Management and Pending Nonce Tracking (\texttt{Blockchain.cpp}):}\\
+    When users submit transactions via \texttt{addTransaction()}, the transaction is validated against the unconfirmed memory pool:
+    \begin{itemize}
+        \item The signature and public key correspondence are verified.
+        \item The transaction nonce must equal the sender's next available nonce (taking both confirmed blocks and previously queued pending transactions into account).
+        \item The sender's available balance (confirmed balance minus the sum of pending transfers) must be greater than or equal to the transfer amount.
+    \end{itemize}
+    Valid transactions are queued in \texttt{std::vector<Transaction> pending}.
+
+    \item \textbf{Strict Chain Validation Engine (\texttt{isValid()} in \texttt{Blockchain.cpp}):}\\
+    The chain integrity validator inspects the entire list of blocks from genesis to tail and verifies ten specific invariants:
+    \begin{enumerate}
+        \item Block indices start at 0 and increment sequentially ($0, 1, 2, \dots$);
+        \item The recalculated SHA-256 hash matches the stored \texttt{block->hash};
+        \item Each block's \texttt{prevHash} matches the exact \texttt{hash} of the preceding block;
+        \item The hash satisfies the target difficulty (correct number of leading zeros);
+        \item The block's recorded difficulty equals the output of \texttt{computeExpectedDifficulty};
+        \item Block timestamps are strictly monotonic: $\text{cur}\to\text{timestamp} > \text{prev}\to\text{timestamp}$;
+        \item Block timestamps do not exceed current wall-clock time by more than 2 hours;
+        \item The genesis block has an index of 0, a \texttt{prevHash} of 64 zeros, and a valid positive timestamp;
+        \item Coinbase transactions only appear at index 0 of a block with the exact configured reward;
+        \item All transactions have valid signatures, sequential nonces, and sender solvency (no negative balances).
+    \end{enumerate}
+
+    \item \textbf{Cumulative Work Consensus and Chain Reorganization (\texttt{Blockchain.cpp}):}\\
+    When a node receives an alternate chain via \texttt{replaceChain(const Blockchain\& other)}, it resolves the fork using cumulative proof-of-work. Because each unit of difficulty requires $16\times$ more hash attempts on average, cumulative work is calculated as:
+    \begin{equation}
+        \text{Work} = \sum_{i=0}^{N-1} 16^{\text{block}[i].\text{difficulty}}
+    \end{equation}
+    The incoming chain replaces the current chain only if: (1) it is not the exact same chain in memory; (2) it shares the exact same \texttt{ChainConfig}; (3) it passes full \texttt{isValid()} validation; and (4) its cumulative work is strictly greater than the current chain's work. The replacement copies the blocks into an isolated temporary list first to guarantee exception safety before swapping pointers.
+
+    \item \textbf{Interactive Demonstration and Testing Suite (\texttt{main.cpp}, \texttt{tests/}):}\\
+    The console interface allows users to step through real-world blockchain events:
+    \begin{itemize}
+        \item Creating wallets and funding them through mining;
+        \item Submitting and mining multi-transaction blocks;
+        \item Intentionally tampering with a transaction amount in an existing block, and watching the validation engine identify the exact corrupted block index;
+        \item Simulating two nodes mining divergent branches and showing how the node on the shorter/lighter branch adopts the longer/heavier branch.
+    \end{itemize}
+    In addition, 7 automated CTest test targets verify each subsystem independently.
+\end{itemize}
+
+\clearpage
+
+% ==========================================
+% PAGE 3: SECTION 1.3 OBJECT-ORIENTED ARCHITECTURE
+% ==========================================
+\section{Object-Oriented Architecture}
+
+The project applies object-oriented design principles to build a reliable, maintainable ledger simulator in modern C++.
+
+\subsection{Object-Oriented Design Principles}
+
+\begin{itemize}
+    \item \textbf{Encapsulation:}
+    Internal data structures are protected from external tampering. In \texttt{Blockchain}, the \texttt{head} and \texttt{tail} pointers, the pending transaction vector, and the cached \texttt{LedgerState} are private members. Callers interact with the blockchain exclusively through public member functions (\texttt{addTransaction}, \texttt{minePending}, \texttt{getBalance}). In \texttt{Wallet}, the private key is held securely within the class, exposing only signing and transaction creation methods.
+
+    \item \textbf{Abstraction and Utility Separation:}
+    Low-level cryptographic operations are abstracted behind clean static interfaces. The \texttt{Hasher} class hides the details of the SHA-256 byte buffers. The \texttt{Signer} class encapsulates the complex OpenSSL C structs (\texttt{EVP\_PKEY}, \texttt{EVP\_MD\_CTX}) and error-handling code. Neither OpenSSL headers nor raw cryptographic buffer logic leak into the domain classes (\texttt{Block}, \texttt{Transaction}, \texttt{Wallet}).
+
+    \item \textbf{Separation of Concerns:}
+    Each class has a distinct, single responsibility:
+    \begin{itemize}
+        \item \texttt{Transaction}: Holds value-transfer data, serialization logic, and signature verification.
+        \item \texttt{Block}: Represents a single node in the list; serializes block headers and executes the proof-of-work loop.
+        \item \texttt{Blockchain}: Manages the list of blocks, the mempool, balance tracking, difficulty calculation, and consensus validation.
+        \item \texttt{Wallet}: Manages private keys and generates signed transactions.
+        \item \texttt{Node}: Models an autonomous network participant holding an isolated blockchain instance.
+    \end{itemize}
+
+    \item \textbf{Resource Management and RAII:}
+    The \texttt{Blockchain} class owns the dynamically allocated \texttt{Block} objects on the heap. It implements a complete destructor that walks the list from \texttt{head} to \texttt{tail} and deletes every node. To prevent double-free bugs and dangling pointers, \texttt{Blockchain} provides custom copy constructors and copy assignment operators that perform a deep copy of all blocks.
+
+    \item \textbf{Exception Safety via Copy-and-Swap:}
+    When replacing a blockchain during fork resolution (\texttt{replaceChain}), the method first duplicates the incoming chain's blocks into a new linked list. Only if all allocations and validations succeed does it swap the pointers and discard the old list. If memory allocation fails during copying, the existing blockchain remains completely unaffected.
+\end{itemize}
+
+\clearpage
+
+% ==========================================
+% PAGE 4: SECTION 1.3.1 CLASS DESIGN AND TABLE 1.1
+% ==========================================
+\subsection{Class Design and Structural Associations}
+
+The primary components and structural associations declared across \texttt{ledger/include/} are detailed below:
+
+\begin{enumerate}
+    \item \textbf{Hasher (Static Cryptographic Utility):} A stateless utility class exposing \texttt{sha256(const std::string\&)}, wrapping the underlying Picosha2 hashing implementation to produce lowercase 64-character digests.
+    
+    \item \textbf{Signer (OpenSSL ECDSA Cryptographic Engine):} A pure static wrapper coordinating OpenSSL's C API for \texttt{secp256k1} key pair generation, DER hex serialization, cryptographic signing, signature verification, and 160-bit address derivation.
+    
+    \item \textbf{KeyPair (Cryptographic Key Container POD):} A lightweight Plain Old Data struct holding the hex-encoded private key and public key strings.
+    
+    \item \textbf{Wallet (Cryptographic Identity and Transaction Factory):} Encapsulates a \texttt{KeyPair} and its corresponding hex address. Serves as a factory constructing and signing outbound \texttt{Transaction} objects.
+    
+    \item \textbf{Transaction (Ledger Transfer Value Object):} Represents individual value transfers. Encapsulates sender, receiver, integer amount, monotonic nonce, sender public key, and signature. Exposes \texttt{signingPayload()} and \texttt{verifySignature()}.
+    
+    \item \textbf{Block (Linked List Node and Mining Engine):} The fundamental structural node of the blockchain linked list. Stores block index, timestamp, difficulty, transactions vector, previous hash, block hash, 64-bit nonce, and a raw pointer to the next block (\texttt{Block* next}).
+    
+    \item \textbf{ChainConfig (Consensus Rules POD):} A configuration structure holding genesis difficulty, target block time, difficulty adjustment frequency, difficulty bounds, and block coinbase rewards.
+    
+    \item \textbf{LedgerState (State Machine Tracking POD):} An in-memory ledger state structure containing hash maps for account balances (\texttt{unordered\_map<string, long long>}) and last-used sender nonces.
+    
+    \item \textbf{Blockchain (List Owner and State Machine Orchestrator):} Manages the singly linked list of blocks, the pending transaction pool, block mining, incremental state caching, structural validation (\texttt{isValid()}), and consensus chain adoption.
+    
+    \item \textbf{Node (Simulated Network Participant):} Represents an autonomous network participant possessing a string identifier and an isolated, independently managed \texttt{Blockchain} instance.
+\end{enumerate}
+
+\vspace{0.8em}
+
+\begin{table}[h!]
+\centering
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{llllX}
+\toprule
+\textbf{Source Class} & \textbf{Target Class} & \textbf{Relationship} & \textbf{Multiplicity} & \textbf{Description} \\
+\midrule
+\texttt{Blockchain} & \texttt{Block} & Composition & $1 \to 0..\ast$ & Owns the singly linked list of blocks; manages heap allocation and deletion. \\
+\texttt{Blockchain} & \texttt{Transaction} & Aggregation & $1 \to 0..\ast$ & Holds unconfirmed pending transactions in the mempool. \\
+\texttt{Blockchain} & \texttt{ChainConfig} & Composition & $1 \to 1$ & Stores consensus and difficulty configuration parameters. \\
+\texttt{Blockchain} & \texttt{LedgerState} & Composition & $1 \to 1$ & Caches confirmed balances and last-seen nonces for $\mathcal{O}(1)$ lookups. \\
+\texttt{Block} & \texttt{Block} & Association & $0..1 \to 0..1$ & Singly linked list pointer (\texttt{Block* next}). \\
+\texttt{Block} & \texttt{Transaction} & Aggregation & $1 \to 0..\ast$ & Contains the list of transactions included in the block. \\
+\texttt{Block} & \texttt{Hasher} & Dependency & -- & Calls \texttt{Hasher::sha256} during block mining and hash calculation. \\
+\texttt{Transaction} & \texttt{Signer} & Dependency & -- & Calls \texttt{Signer::verify} and \texttt{Signer::addressFromPublicKey}. \\
+\texttt{Wallet} & \texttt{KeyPair} & Composition & $1 \to 1$ & Holds the private and public key pair in memory. \\
+\texttt{Wallet} & \texttt{Signer} & Dependency & -- & Uses \texttt{Signer} to generate keys and create digital signatures. \\
+\texttt{Wallet} & \texttt{Transaction} & Factory & $1 \to 0..\ast$ & Creates and signs outbound transaction objects. \\
+\texttt{Node} & \texttt{Blockchain} & Composition & $1 \to 1$ & Owns an independent local copy of the blockchain ledger. \\
+\texttt{Node} & \texttt{Transaction} & Dependency & -- & Forwards transactions to its local \texttt{Blockchain} instance. \\
+\bottomrule
+\end{tabularx}
+\caption{Structural Relationships and Associations across the Codebase.}
+\label{tab:associations}
+\end{table}
+
+\clearpage
+
+% ==========================================
+% PAGE 5: SECTION 1.3.2 UML CLASS DIAGRAM (FULL DEDICATED PAGE)
+% ==========================================
+\subsection{UML Class Diagram}
+
+The complete UML Class Diagram representing all entities, members, types, and associations declared in \texttt{ledger/include/} is illustrated in Figure~\ref{fig:uml_diagram}. 
+
+The architecture is structured into three clean, non-overlapping columns using automatic relative layout geometry:
+\begin{itemize}
+    \item \textbf{Left Column:} Configuration structures and network abstraction (\texttt{ChainConfig}, \texttt{LedgerState}, \texttt{Node}).
+    \item \textbf{Center Column:} Core singly-linked blockchain ledger components (\texttt{Block}, \texttt{Blockchain}).
+    \item \textbf{Right Column:} Cryptographic engine, user identity, and value transfers (\texttt{Hasher}, \texttt{Signer}, \texttt{Wallet}, \texttt{Transaction}).
+\end{itemize}
+
+\vspace{0.8em}
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    scale=0.78, every node/.style={transform shape},
+    umlbox/.style={
+        rectangle, draw=black!90, thick, fill=white, font=\footnotesize,
+        text width=4.7cm, inner sep=4pt
+    },
+    centerbox/.style={
+        rectangle, draw=black!90, thick, fill=white, font=\footnotesize,
+        text width=5.6cm, inner sep=4pt
+    },
+    arrow/.style={-{Latex[scale=0.9]}, thick},
+    dashedarrow/.style={-{Latex[scale=0.9]}, dashed, thick},
+    composition/.style={-{Diamond[scale=1.2, fill=black]}, thick},
+    aggregation/.style={-{Diamond[scale=1.2, fill=white]}, thick}
+]
+
+% ================= CENTER COLUMN =================
+% 1. Block (Center Top)
+\node (block) [centerbox] at (0, 3.8) {
+    \centering \textbf{Block}\\[2pt]
+    \rule{5.6cm}{0.4pt}\\[2pt]
+    + index: int\\
+    + timestamp: long long\\
+    + difficulty: int\\
+    + txs: std::vector\textless Transaction\textgreater\\
+    + prevHash: std::string\\
+    + hash: std::string\\
+    + nonce: uint64\_t\\
+    + next: Block*\\[2pt]
+    \rule{5.6cm}{0.4pt}\\[2pt]
+    + \textbf{Block}(idx, txs, prev, diff, time)\\
+    + \textbf{calculateHash}() const: string\\
+    + \textbf{mine}(): void\\
+    + \textbf{meetsDifficulty}(h, diff): static bool
+};
+
+% 2. Blockchain (Center Bottom - positioned with explicit clearance below Block)
+\node (blockchain) [centerbox, below=1.4cm of block] {
+    \centering \textbf{Blockchain}\\[2pt]
+    \rule{5.6cm}{0.4pt}\\[2pt]
+    - head: Block*\\
+    - tail: Block*\\
+    - size: int\\
+    - cfg: ChainConfig\\
+    - pending: std::vector\textless Transaction\textgreater\\
+    - confirmedState: mutable LedgerState\\
+    - stateDirty: mutable bool\\[2pt]
+    \rule{5.6cm}{0.4pt}\\[2pt]
+    + \textbf{Blockchain}(config: ChainConfig)\\
+    + \textbf{addTransaction}(tx, err): bool\\
+    + \textbf{minePending}(minerAddress): const Block*\\
+    + \textbf{getBalance}(address) const: long long\\
+    + \textbf{availableBalance}(address) const: long long\\
+    + \textbf{nextNonce}(address) const: long long\\
+    + \textbf{isValid}(badIndex, reason) const: bool\\
+    + \textbf{computeExpectedDifficulty}(p, c): static int\\
+    + \textbf{cumulativeWork}() const: unsigned long long\\
+    + \textbf{replaceChain}(other: Blockchain): bool\\
+    + \textbf{tamper}(index, newAmount): bool
+};
+
+% ================= LEFT COLUMN =================
+% 3. ChainConfig (Left Top)
+\node (chainconfig) [umlbox, left=1.2cm of block.north west, anchor=north east] {
+    \centering \textbf{\guillemotleft struct\guillemotright\ ChainConfig}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + initialDifficulty: int = 3\\
+    + targetBlockSeconds: int = 10\\
+    + adjustInterval: int = 5\\
+    + minDifficulty: int = 1\\
+    + maxDifficulty: int = 5\\
+    + reward: long long = 50\\
+    + \textbf{operator==}(o: ChainConfig) const: bool
+};
+
+% 4. LedgerState (Left Middle)
+\node (ledgerstate) [umlbox, below=0.8cm of chainconfig] {
+    \centering \textbf{\guillemotleft struct\guillemotright\ LedgerState}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + balances: unordered\_map\textless str, i64\textgreater\\
+    + lastNonce: unordered\_map\textless str, i64\textgreater\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + \textbf{balanceOf}(addr) const: long long\\
+    + \textbf{applyTransaction}(tx): void
+};
+
+% 5. Node (Left Bottom)
+\node (node) [umlbox, below=0.8cm of ledgerstate] {
+    \centering \textbf{Node}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    - id: std::string\\
+    - chain: Blockchain\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + \textbf{Node}(id: string, cfg: ChainConfig)\\
+    + \textbf{getId}() const: const string\&\\
+    + \textbf{getChain}(): Blockchain\&\\
+    + \textbf{addTransaction}(tx, err): bool\\
+    + \textbf{mine}(minerAddress): const Block*\\
+    + \textbf{receiveChain}(other: Blockchain): bool
+};
+
+% ================= RIGHT COLUMN =================
+% 6. Hasher (Right Top)
+\node (hasher) [umlbox, right=1.2cm of block.north east, anchor=north west] {
+    \centering \textbf{\guillemotleft utility\guillemotright\ Hasher}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    \textit{(stateless wrapper)}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + \textbf{sha256}(s: const string\&): static string
+};
+
+% 7. Signer (Right Upper-Mid)
+\node (signer) [umlbox, below=0.6cm of hasher] {
+    \centering \textbf{\guillemotleft utility\guillemotright\ Signer}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    \textit{(OpenSSL secp256k1 ECDSA)}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + \textbf{generateKeyPair}(): static KeyPair\\
+    + \textbf{sign}(privHex, msg): static string\\
+    + \textbf{verify}(pubHex, msg, sigHex): static bool\\
+    + \textbf{addressFromPublicKey}(pubHex): static string
+};
+
+% 8. Wallet (Right Lower-Mid)
+\node (wallet) [umlbox, below=0.7cm of signer] {
+    \centering \textbf{Wallet}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    - keys: KeyPair\\
+    - addr: std::string\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + \textbf{Wallet}()\\
+    + \textbf{address}() const: const string\&\\
+    + \textbf{publicKey}() const: const string\&\\
+    + \textbf{sign}(msg: string) const: string\\
+    + \textbf{createTransaction}(to, amt, n): Transaction
+};
+
+% 9. Transaction (Right Bottom)
+\node (transaction) [umlbox, below=0.7cm of wallet] {
+    \centering \textbf{Transaction}\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + sender: std::string\\
+    + receiver: std::string\\
+    + amount: long long\\
+    + nonce: long long\\
+    + senderPubKey: std::string\\
+    + signature: std::string\\[2pt]
+    \rule{4.7cm}{0.4pt}\\[2pt]
+    + \textbf{coinbase}(miner, r): static Transaction\\
+    + \textbf{isCoinbase}() const: bool\\
+    + \textbf{signingPayload}() const: string\\
+    + \textbf{verifySignature}() const: bool
+};
+
+% ================= CLEAN, UN-CROSSED ORTHOGONAL CONNECTORS =================
+
+% 1. Blockchain owns Block list (straight vertical in center)
+\draw [composition] (blockchain.north) -- (block.south) node[midway, right=2pt, font=\tiny] {owns list ($1 \to 0..\ast$)};
+
+% 2. Block next pointer (clean rectangular loop on top-right corner)
+\draw [arrow] (block.north east) -- ++(0.6, 0) |- (block.east)
+    node[near start, above, font=\tiny] {next};
+
+% 3. Blockchain configured by ChainConfig
+\draw [composition] (blockchain.north west) -| (-3.4, 2.0) |- (chainconfig.east)
+    node[near start, above, font=\tiny] {configures};
+
+% 4. Blockchain caches LedgerState (straight horizontal)
+\draw [composition] (blockchain.west |- ledgerstate.east) -- (ledgerstate.east)
+    node[midway, above, font=\tiny] {caches};
+
+% 5. Node owns local Blockchain replica (straight horizontal)
+\draw [composition] (node.east) -- (blockchain.west |- node.east)
+    node[midway, above, font=\tiny] {owns replica ($1 \to 1$)};
+
+% 6. Block contains Transactions (orthogonal via center gutter)
+\draw [aggregation] (block.south east) -| (3.4, 1.0) |- (transaction.west)
+    node[near start, above, font=\tiny] {contains txs};
+
+% 7. Blockchain holds pending Transactions (straight horizontal)
+\draw [aggregation] (blockchain.east |- transaction.west) -- (transaction.west)
+    node[midway, above, font=\tiny] {holds pending};
+
+% 8. Block hashes via Hasher (straight horizontal)
+\draw [dashedarrow] (block.east |- hasher.west) -- (hasher.west)
+    node[midway, above, font=\tiny] {hashes with};
+
+% 9. Wallet delegates signing to Signer (straight vertical)
+\draw [dashedarrow] (wallet.north) -- (signer.south)
+    node[midway, right=2pt, font=\tiny] {uses};
+
+% 10. Wallet creates Transactions (straight vertical)
+\draw [dashedarrow] (wallet.south) -- (transaction.north)
+    node[midway, right=2pt, font=\tiny] {creates};
+
+% 11. Transaction verifies signatures via Signer (outer clean run)
+\draw [dashedarrow] (transaction.east) -- ++(0.4, 0) |- (signer.east)
+    node[near start, right=2pt, font=\tiny] {verifies with};
+
+\end{tikzpicture}
+\caption{Clean, Separated UML Class Diagram of the Blockchain Ledger Simulator.}
+\label{fig:uml_diagram}
+\end{figure}
+
+\clearpage
+
+% ==========================================
+% PAGE 6: SECTION 1.3.3 SYSTEM ARCHITECTURE BLUEPRINT (FULL DEDICATED PAGE)
+% ==========================================
+\subsection{System Architecture Blueprint}
+
+The end-to-end layered architecture mapping the operating environment, presentation CLI, network replication, state caching, block linked list storage, cryptographic core, and build pipeline is illustrated in Figure~\ref{fig:arch_blueprint}.
+
+Following the reference architecture specification, the blueprint is structured with four wide sequential processing tiers and two parallel foundational subsystems at the base, utilizing relative vertical offset constraints to provide ample line spacing, box padding, and clear vertical flow.
+
+\vspace{0.8em}
+
+\begin{figure}[h!]
+\centering
+\begin{tikzpicture}[
+    scale=0.82, every node/.style={transform shape},
+    layerbox/.style={
+        rectangle, draw=black!85, thick, fill=white,
+        text width=14.8cm, inner sep=9pt, font=\small
+    },
+    subbox/.style={
+        rectangle, draw=black!60, fill=black!2, font=\scriptsize,
+        align=center, inner sep=6pt, minimum height=1.3cm
+    },
+    halfbox/.style={
+        rectangle, draw=black!85, thick, fill=white,
+        text width=7.1cm, inner sep=9pt, font=\small
+    },
+    arrow/.style={-{Latex[scale=1.0]}, thick, draw=black!75}
+]
+
+% 1. Presentation & Consumer Layer
+\node (layer1) [layerbox] {
+    \textbf{1. Operating Environment and Consumer Layer (\texttt{main.cpp}, \texttt{tests/})}\\[6pt]
+    \begin{minipage}{\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node (cli) [subbox, text width=4.3cm] at (-4.9, 0) {
+                \textbf{Interactive CLI Menu}\\
+                10 console options for wallet creation, mining, transfers, tampering, and forks
+            };
+            \node (tests) [subbox, text width=4.5cm] at (0, 0) {
+                \textbf{CTest Test Pipeline}\\
+                7 independent regression test binaries covering hashing, crypto, blocks, and chains
+            };
+            \node (facade) [subbox, text width=4.3cm] at (4.9, 0) {
+                \textbf{Public Header APIs}\\
+                Direct modular inclusion:\\
+                \texttt{Blockchain.h}, \texttt{Wallet.h}, \texttt{Node.h}
+            };
+        \end{tikzpicture}
+    \end{minipage}
+};
+
+% 2. Network & Node Layer (Positioned with 0.85cm guaranteed clearance below layer1)
+\node (layer2) [layerbox, below=0.85cm of layer1] {
+    \textbf{2. Network Simulation and Consensus Sync Layer (\texttt{Node.h}, \texttt{Node.cpp})}\\[6pt]
+    \begin{minipage}{\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node (nodeid) [subbox, text width=4.3cm] at (-4.9, 0) {
+                \textbf{Node Identity Management}\\
+                Named simulated network actor with an isolated \texttt{Blockchain} instance
+            };
+            \node (sync) [subbox, text width=4.5cm] at (0, 0) {
+                \textbf{Consensus Synchronization}\\
+                \texttt{receiveChain()}: validates incoming chain and checks cumulative work
+            };
+            \node (minefacade) [subbox, text width=4.3cm] at (4.9, 0) {
+                \textbf{Mining Delegation}\\
+                \texttt{node.mine()}: awards block reward to miner and appends to local chain
+            };
+        \end{tikzpicture}
+    \end{minipage}
+};
+
+% 3. Ledger State Machine Layer (Positioned with 0.85cm guaranteed clearance below layer2)
+\node (layer3) [layerbox, below=0.85cm of layer2] {
+    \textbf{3. Ledger State Machine and Mempool Layer (\texttt{Blockchain.h}, \texttt{Blockchain.cpp})}\\[6pt]
+    \begin{minipage}{\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node (mempool) [subbox, text width=3.3cm] at (-5.4, 0) {
+                \textbf{Memory Pool}\\
+                \texttt{pending} vector;\\
+                validates balances and nonces before queuing
+            };
+            \node (statecache) [subbox, text width=3.5cm] at (-1.8, 0) {
+                \textbf{State Cache}\\
+                \texttt{confirmedState} map;\\
+                provides $\mathcal{O}(1)$ balance and nonce lookups
+            };
+            \node (retarget) [subbox, text width=3.5cm] at (1.8, 0) {
+                \textbf{Difficulty Retargeting}\\
+                \texttt{computeExpectedDifficulty}:\\
+                evaluates wall-clock epochs against expected target
+            };
+            \node (validator) [subbox, text width=3.3cm] at (5.4, 0) {
+                \textbf{Chain Validator}\\
+                \texttt{isValid()}: checks 10\\
+                structural and cryptographic invariants on the chain
+            };
+        \end{tikzpicture}
+    \end{minipage}
+};
+
+% 4. Block Storage Layer (Positioned with 0.85cm guaranteed clearance below layer3)
+\node (layer4) [layerbox, below=0.85cm of layer3] {
+    \textbf{4. Block Storage and Proof-of-Work Mining Layer (\texttt{Block.h}, \texttt{Block.cpp})}\\[6pt]
+    \begin{minipage}{\textwidth}
+        \centering
+        \begin{tikzpicture}
+            \node (linkedlist) [subbox, text width=4.3cm] at (-4.9, 0) {
+                \textbf{Singly Linked List}\\
+                Raw pointer linking (\texttt{Block* next});\\
+                $\mathcal{O}(1)$ tail appends, deep-copy RAII
+            };
+            \node (mining) [subbox, text width=4.5cm] at (0, 0) {
+                \textbf{Proof-of-Work Loop}\\
+                \texttt{Block::mine()}: increments 64-bit nonce with timestamp rollover protection
+            };
+            \node (txstorage) [subbox, text width=4.3cm] at (4.9, 0) {
+                \textbf{Transaction Packaging}\\
+                Stores coinbase and standard transfer transactions in \texttt{std::vector}
+            };
+        \end{tikzpicture}
+    \end{minipage}
+};
+
+% 5. Cryptography Subsystem (Bottom Left Half - 0.85cm clearance below layer4)
+\node (layer5) [halfbox, below left=0.85cm and 0.2cm of layer4.south] {
+    \textbf{5. Cryptographic Security Subsystem}\\[5pt]
+    \begin{minipage}{\linewidth}
+        \centering
+        \begin{tikzpicture}
+            \node (openssl) [subbox, text width=6.2cm] at (0, 0.9) {
+                \textbf{OpenSSL secp256k1 ECDSA}\\
+                \texttt{Signer::sign}, \texttt{Signer::verify}\\
+                DER-formatted signature generation
+            };
+            \node (picosha) [subbox, text width=6.2cm] at (0, -0.7) {
+                \textbf{SHA-256 Hashing Engine \& Wallets}\\
+                \texttt{Hasher::sha256()}, 160-bit address derivation,\\
+                private/public \texttt{KeyPair} management
+            };
+        \end{tikzpicture}
+    \end{minipage}
+};
+
+% 6. Build & Packaging Pipeline (Bottom Right Half - 0.85cm clearance below layer4)
+\node (layer6) [halfbox, below right=0.85cm and 0.2cm of layer4.south] {
+    \textbf{6. Build and Testing Pipeline}\\[5pt]
+    \begin{minipage}{\linewidth}
+        \centering
+        \begin{tikzpicture}
+            \node (corelib) [subbox, text width=6.2cm] at (0, 0.9) {
+                \textbf{Static Core Library}\\
+                \texttt{add\_library(ledger\_core)}\\
+                Compiled with C++17 \texttt{-Wall -Wextra}
+            };
+            \node (ctestpipe) [subbox, text width=6.2cm] at (0, -0.7) {
+                \textbf{External Deps \& Test Runner}\\
+                Direct linkage to \texttt{OpenSSL::Crypto}\\
+                7 automated CTest regression suites
+            };
+        \end{tikzpicture}
+    \end{minipage}
+};
+
+% Connecting Arrows with generous 0.85cm clear margins
+\draw [arrow] (layer1.south) -- (layer2.north)
+    node[midway, right=4pt, font=\scriptsize] {Commands and API calls};
+\draw [arrow] (layer2.south) -- (layer3.north)
+    node[midway, right=4pt, font=\scriptsize] {Replicates and queries};
+\draw [arrow] (layer3.south) -- (layer4.north)
+    node[midway, right=4pt, font=\scriptsize] {Appends and iterates};
+\draw [arrow] (layer4.south -| layer5.north) -- (layer5.north)
+    node[midway, left=4pt, font=\scriptsize] {Hashes \& Signatures};
+\draw [arrow] (layer4.south -| layer6.north) -- (layer6.north)
+    node[midway, right=4pt, font=\scriptsize] {Compiled \& Linked};
+
+\end{tikzpicture}
+\caption{System Architecture Blueprint of the Blockchain Ledger Simulator.}
+\label{fig:arch_blueprint}
+\end{figure}
+
+\end{document}

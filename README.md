@@ -17,7 +17,7 @@ reward, spending is checked against balances, and mining difficulty adjusts itse
 
 ```bash
 mkdir build && cd build
-cmake ..
+cmake ../ledger
 cmake --build .
 ./ledger                   
 ctest --output-on-failure   
