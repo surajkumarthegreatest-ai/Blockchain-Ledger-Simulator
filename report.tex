@@ -16,6 +16,7 @@
 \usepackage{listings}
 \usepackage{microtype}
 \usepackage{hyperref}
+\usepackage{float}
 
 \hypersetup{
     colorlinks=true,
@@ -28,20 +29,20 @@
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small Blockchain Ledger Simulator (Cryptographic Ledger in C++)}
-\fancyhead[R]{\small Chapter 1: Project Report}
+\fancyhead[R]{\small Chapter 26: Project Report}
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\footrulewidth}{0pt}
 
 % Section formatting styles
-\setcounter{chapter}{1}
+\setcounter{chapter}{26}
 
 \begin{document}
 
 % ==========================================
-% PAGE 1: CHAPTER TITLE & SECTION 1.1
+% PAGE 1: CHAPTER TITLE & SECTION 26.1
 % ==========================================
-\noindent{\Huge \textbf{Chapter 1}}\\[0.6em]
+\noindent{\Huge \textbf{Chapter 26}}\\[0.6em]
 {\LARGE \textbf{Blockchain Ledger Simulator (C++17 Implementation)}}\\[1em]
 \noindent\textbf{Authors:} Tarun K, Suraj Kumar\\[0.5em]
 \noindent\textbf{Project Repository:} \texttt{Blockchain-Ledger-Simulator} \textbar\ \textbf{Language:} C++17 \textbar\ \textbf{Build Tool:} CMake 3.16+
@@ -103,7 +104,7 @@ For end users and testers, the system provides an interactive console applicatio
 \clearpage
 
 % ==========================================
-% PAGE 2: SECTION 1.2 SCOPE AND FEATURE SET
+% PAGE 2: SECTION 26.2 SCOPE AND FEATURE SET
 % ==========================================
 \section{Scope and Feature Set}
 
@@ -214,7 +215,7 @@ The implementation strictly reflects the code located in the \texttt{ledger/} di
 \clearpage
 
 % ==========================================
-% PAGE 3: SECTION 1.3 OBJECT-ORIENTED ARCHITECTURE
+% PAGE 3: SECTION 26.3 OBJECT-ORIENTED ARCHITECTURE
 % ==========================================
 \section{Object-Oriented Architecture}
 
@@ -249,7 +250,7 @@ The project applies object-oriented design principles to build a reliable, maint
 \clearpage
 
 % ==========================================
-% PAGE 4: SECTION 1.3.1 CLASS DESIGN AND TABLE 1.1
+% PAGE 7: SECTION 26.3.2 CLASS DESIGN AND STRUCTURAL ASSOCIATIONS
 % ==========================================
 \subsection{Class Design and Structural Associations}
 
@@ -277,9 +278,12 @@ The primary components and structural associations declared across \texttt{ledge
     \item \textbf{Node (Simulated Network Participant):} Represents an autonomous network participant possessing a string identifier and an isolated, independently managed \texttt{Blockchain} instance.
 \end{enumerate}
 
-\vspace{0.8em}
+\clearpage
 
-\begin{table}[h!]
+% ==========================================
+% PAGE 8: TABLE 26.1 STRUCTURAL RELATIONSHIPS (TOP OF PAGE)
+% ==========================================
+\begin{table}[H]
 \centering
 \small
 \renewcommand{\arraystretch}{1.25}
@@ -306,10 +310,12 @@ The primary components and structural associations declared across \texttt{ledge
 \label{tab:associations}
 \end{table}
 
+\vfill
+
 \clearpage
 
 % ==========================================
-% PAGE 5: SECTION 1.3.2 UML CLASS DIAGRAM (FULL DEDICATED PAGE)
+% PAGE 9: SECTION 26.3.3 UML CLASS DIAGRAM (FULL DEDICATED PAGE)
 % ==========================================
 \subsection{UML Class Diagram}
 
@@ -503,7 +509,7 @@ The architecture is structured into three clean, dedicated functional tiers to e
 \clearpage
 
 % ==========================================
-% PAGE 6: SECTION 1.3.3 SYSTEM ARCHITECTURE BLUEPRINT (FULL DEDICATED PAGE)
+% PAGE 10: SECTION 26.3.4 SYSTEM ARCHITECTURE BLUEPRINT (FULL DEDICATED PAGE)
 % ==========================================
 \subsection{System Architecture Blueprint}
 
@@ -686,5 +692,19 @@ Following the reference architecture specification, the blueprint is structured 
 \caption{System Architecture Blueprint of the Blockchain Ledger Simulator.}
 \label{fig:arch_blueprint}
 \end{figure}
+
+\clearpage
+
+% ==========================================
+% PAGE 11: SECTION 26.3.5 TECH STACK
+% ==========================================
+\subsection{Tech Stack}
+
+\begin{itemize}
+    \item \textbf{C++17:} Powers the core simulator with modern object-oriented idioms, explicit pointer-linked memory management via RAII, strongly typed standard library abstractions, and zero-overhead data structures.
+    \item \textbf{OpenSSL:} Provides enterprise-grade cryptographic security through native C EVP interfaces, enabling deterministic \texttt{secp256k1} elliptic curve key generation and DER-encoded ECDSA transaction signing and verification.
+    \item \textbf{CMake:} Serves as the cross-platform meta-build automation system that orchestrates compilation across modules, resolves OpenSSL cryptographic dependencies, enforces C++17 standards, and drives automated CTest regression suites.
+    \item \textbf{SHA-256:} Implements a collision-resistant 256-bit cryptographic digest algorithm used for tamper-evident inter-block hash linking, deterministic 160-bit wallet address generation, and Proof-of-Work mining difficulty verification.
+\end{itemize}
 
 \end{document}
