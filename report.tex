@@ -313,28 +313,29 @@ The primary components and structural associations declared across \texttt{ledge
 % ==========================================
 \subsection{UML Class Diagram}
 
-The complete UML Class Diagram representing all entities, members, types, and associations declared in \texttt{ledger/include/} is illustrated in Figure~\ref{fig:uml_diagram}. 
+The complete UML Class Diagram representing the seven core classes declared across \texttt{ledger/include/} (\texttt{Block}, \texttt{Blockchain}, \texttt{Hasher}, \texttt{Node}, \texttt{Signer}, \texttt{Transaction}, and \texttt{Wallet}) is illustrated in Figure~\ref{fig:uml_diagram}. 
 
-The architecture is structured into three clean, non-overlapping columns using automatic relative layout geometry:
+The architecture is structured into three clean, dedicated functional tiers to eliminate visual congestion, overlapping text, and crossed connectors:
 \begin{itemize}
-    \item \textbf{Left Column:} Configuration structures and network abstraction (\texttt{ChainConfig}, \texttt{LedgerState}, \texttt{Node}).
-    \item \textbf{Center Column:} Core singly-linked blockchain ledger components (\texttt{Block}, \texttt{Blockchain}).
-    \item \textbf{Right Column:} Cryptographic engine, user identity, and value transfers (\texttt{Hasher}, \texttt{Signer}, \texttt{Wallet}, \texttt{Transaction}).
+    \item \textbf{Top Layer (Network Simulation \& Stateless Cryptography):} The network node wrapper (\texttt{Node}) on the left and the stateless cryptographic engines (\texttt{Hasher}, \texttt{Signer}) on the right.
+    \item \textbf{Center Layer (Core Ledger \& Client Identity):} The central linked ledger container (\texttt{Blockchain}) and the client identity manager (\texttt{Wallet}).
+    \item \textbf{Bottom Layer (Singly-Linked Storage \& Value Transfer Payloads):} The heap-allocated linked list node (\texttt{Block}) and the signed transfer structure (\texttt{Transaction}).
 \end{itemize}
 
-\vspace{0.8em}
+\vspace{0.6em}
 
 \begin{figure}[h!]
 \centering
 \begin{tikzpicture}[
-    scale=0.78, every node/.style={transform shape},
-    umlbox/.style={
+    scale=0.82, every node/.style={transform shape},
+    node distance=1.1cm and 2.4cm,
+    classbox/.style={
         rectangle, draw=black!90, thick, fill=white, font=\footnotesize,
-        text width=4.7cm, inner sep=4pt
+        text width=5.6cm, inner sep=5pt
     },
-    centerbox/.style={
+    utilitybox/.style={
         rectangle, draw=black!90, thick, fill=white, font=\footnotesize,
-        text width=5.6cm, inner sep=4pt
+        text width=4.8cm, inner sep=4pt
     },
     arrow/.style={-{Latex[scale=0.9]}, thick},
     dashedarrow/.style={-{Latex[scale=0.9]}, dashed, thick},
@@ -342,193 +343,162 @@ The architecture is structured into three clean, non-overlapping columns using a
     aggregation/.style={-{Diamond[scale=1.2, fill=white]}, thick}
 ]
 
-% ================= CENTER COLUMN =================
-% 1. Block (Center Top)
-\node (block) [centerbox] at (0, 3.8) {
-    \centering \textbf{Block}\\[2pt]
+% ================= ROW 1: TOP TIER (NETWORK & CRYPTO HELPERS) =================
+% 1. Node (Top Left)
+\node (node) [classbox] at (-4.2, 5.0) {
+    \centering \textbf{Node}\\[2pt]
     \rule{5.6cm}{0.4pt}\\[2pt]
-    + index: int\\
-    + timestamp: long long\\
-    + difficulty: int\\
-    + txs: std::vector\textless Transaction\textgreater\\
-    + prevHash: std::string\\
-    + hash: std::string\\
-    + nonce: uint64\_t\\
-    + next: Block*\\[2pt]
+    - id : std::string\\
+    - chain : Blockchain\\[2pt]
     \rule{5.6cm}{0.4pt}\\[2pt]
-    + \textbf{Block}(idx, txs, prev, diff, time)\\
-    + \textbf{calculateHash}() const: string\\
-    + \textbf{mine}(): void\\
-    + \textbf{meetsDifficulty}(h, diff): static bool
+    + \textbf{Node}(id: string, cfg: ChainConfig)\\
+    + \textbf{getId}() const : const string\&\\
+    + \textbf{getChain}() : Blockchain\&\\
+    + \textbf{addTransaction}(tx, err) : bool\\
+    + \textbf{mine}(minerAddress) : const Block*\\
+    + \textbf{receiveChain}(other: Blockchain) : bool
 };
 
-% 2. Blockchain (Center Bottom - positioned with explicit clearance below Block)
-\node (blockchain) [centerbox, below=1.4cm of block] {
+% 2. Hasher (Top Right Upper)
+\node (hasher) [utilitybox] at (4.2, 6.4) {
+    \centering \textbf{\guillemotleft utility\guillemotright\ Hasher}\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    \textit{(stateless SHA-256 wrapper)}\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    + \textbf{sha256}(s: const string\&) : static string
+};
+
+% 3. Signer (Top Right Lower)
+\node (signer) [utilitybox, below=0.6cm of hasher] {
+    \centering \textbf{\guillemotleft utility\guillemotright\ Signer}\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    \textit{(OpenSSL secp256k1 ECDSA engine)}\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    + \textbf{generateKeyPair}() : static KeyPair\\
+    + \textbf{sign}(privHex, msg) : static string\\
+    + \textbf{verify}(pubHex, msg, sigHex) : static bool\\
+    + \textbf{addressFromPublicKey}(pubHex) : static string
+};
+
+% ================= ROW 2: CENTER TIER (CORE LEDGER & WALLET) =================
+% 4. Blockchain (Center Left - directly below Node)
+\node (blockchain) [classbox, below=1.2cm of node] {
     \centering \textbf{Blockchain}\\[2pt]
     \rule{5.6cm}{0.4pt}\\[2pt]
-    - head: Block*\\
-    - tail: Block*\\
-    - size: int\\
-    - cfg: ChainConfig\\
-    - pending: std::vector\textless Transaction\textgreater\\
-    - confirmedState: mutable LedgerState\\
-    - stateDirty: mutable bool\\[2pt]
+    - head : Block*\\
+    - tail : Block*\\
+    - size : int\\
+    - cfg : ChainConfig\\
+    - pending : std::vector\textless Transaction\textgreater\\
+    - confirmedState : mutable LedgerState\\[2pt]
     \rule{5.6cm}{0.4pt}\\[2pt]
     + \textbf{Blockchain}(config: ChainConfig)\\
-    + \textbf{addTransaction}(tx, err): bool\\
-    + \textbf{minePending}(minerAddress): const Block*\\
-    + \textbf{getBalance}(address) const: long long\\
-    + \textbf{availableBalance}(address) const: long long\\
-    + \textbf{nextNonce}(address) const: long long\\
-    + \textbf{isValid}(badIndex, reason) const: bool\\
-    + \textbf{computeExpectedDifficulty}(p, c): static int\\
-    + \textbf{cumulativeWork}() const: unsigned long long\\
-    + \textbf{replaceChain}(other: Blockchain): bool\\
-    + \textbf{tamper}(index, newAmount): bool
+    + \textbf{addTransaction}(tx, err) : bool\\
+    + \textbf{minePending}(minerAddress) : const Block*\\
+    + \textbf{getBalance}(address) const : long long\\
+    + \textbf{availableBalance}(address) const : long long\\
+    + \textbf{nextNonce}(address) const : long long\\
+    + \textbf{isValid}(badIndex, reason) const : bool\\
+    + \textbf{computeExpectedDifficulty}(p, c) : static int\\
+    + \textbf{cumulativeWork}() const : unsigned long long\\
+    + \textbf{replaceChain}(other: Blockchain) : bool\\
+    + \textbf{tamper}(index, newAmount) : bool
 };
 
-% ================= LEFT COLUMN =================
-% 3. ChainConfig (Left Top)
-\node (chainconfig) [umlbox, left=1.2cm of block.north west, anchor=north east] {
-    \centering \textbf{\guillemotleft struct\guillemotright\ ChainConfig}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + initialDifficulty: int = 3\\
-    + targetBlockSeconds: int = 10\\
-    + adjustInterval: int = 5\\
-    + minDifficulty: int = 1\\
-    + maxDifficulty: int = 5\\
-    + reward: long long = 50\\
-    + \textbf{operator==}(o: ChainConfig) const: bool
-};
-
-% 4. LedgerState (Left Middle)
-\node (ledgerstate) [umlbox, below=0.8cm of chainconfig] {
-    \centering \textbf{\guillemotleft struct\guillemotright\ LedgerState}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + balances: unordered\_map\textless str, i64\textgreater\\
-    + lastNonce: unordered\_map\textless str, i64\textgreater\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + \textbf{balanceOf}(addr) const: long long\\
-    + \textbf{applyTransaction}(tx): void
-};
-
-% 5. Node (Left Bottom)
-\node (node) [umlbox, below=0.8cm of ledgerstate] {
-    \centering \textbf{Node}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    - id: std::string\\
-    - chain: Blockchain\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + \textbf{Node}(id: string, cfg: ChainConfig)\\
-    + \textbf{getId}() const: const string\&\\
-    + \textbf{getChain}(): Blockchain\&\\
-    + \textbf{addTransaction}(tx, err): bool\\
-    + \textbf{mine}(minerAddress): const Block*\\
-    + \textbf{receiveChain}(other: Blockchain): bool
-};
-
-% ================= RIGHT COLUMN =================
-% 6. Hasher (Right Top)
-\node (hasher) [umlbox, right=1.2cm of block.north east, anchor=north west] {
-    \centering \textbf{\guillemotleft utility\guillemotright\ Hasher}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    \textit{(stateless wrapper)}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + \textbf{sha256}(s: const string\&): static string
-};
-
-% 7. Signer (Right Upper-Mid)
-\node (signer) [umlbox, below=0.6cm of hasher] {
-    \centering \textbf{\guillemotleft utility\guillemotright\ Signer}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    \textit{(OpenSSL secp256k1 ECDSA)}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + \textbf{generateKeyPair}(): static KeyPair\\
-    + \textbf{sign}(privHex, msg): static string\\
-    + \textbf{verify}(pubHex, msg, sigHex): static bool\\
-    + \textbf{addressFromPublicKey}(pubHex): static string
-};
-
-% 8. Wallet (Right Lower-Mid)
-\node (wallet) [umlbox, below=0.7cm of signer] {
+% 5. Wallet (Center Right - directly below Signer)
+\node (wallet) [utilitybox, below=1.4cm of signer] {
     \centering \textbf{Wallet}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    - keys: KeyPair\\
-    - addr: std::string\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    - keys : KeyPair\\
+    - addr : std::string\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
     + \textbf{Wallet}()\\
-    + \textbf{address}() const: const string\&\\
-    + \textbf{publicKey}() const: const string\&\\
-    + \textbf{sign}(msg: string) const: string\\
-    + \textbf{createTransaction}(to, amt, n): Transaction
+    + \textbf{address}() const : const string\&\\
+    + \textbf{publicKey}() const : const string\&\\
+    + \textbf{sign}(msg: string) const : string\\
+    + \textbf{createTransaction}(to, amt, n) : Transaction
 };
 
-% 9. Transaction (Right Bottom)
-\node (transaction) [umlbox, below=0.7cm of wallet] {
+% ================= ROW 3: BOTTOM TIER (STORAGE NODE & PAYLOAD) =================
+% 6. Block (Bottom Left - directly below Blockchain)
+\node (block) [classbox, below=1.2cm of blockchain] {
+    \centering \textbf{Block}\\[2pt]
+    \rule{5.6cm}{0.4pt}\\[2pt]
+    + index : int\\
+    + timestamp : long long\\
+    + difficulty : int\\
+    + txs : std::vector\textless Transaction\textgreater\\
+    + prevHash : std::string\\
+    + hash : std::string\\
+    + nonce : uint64\_t\\
+    + next : Block*\\[2pt]
+    \rule{5.6cm}{0.4pt}\\[2pt]
+    + \textbf{Block}(idx, txs, prev, diff, time)\\
+    + \textbf{calculateHash}() const : string\\
+    + \textbf{mine}() : void\\
+    + \textbf{meetsDifficulty}(h, diff) : static bool
+};
+
+% 7. Transaction (Bottom Right - directly below Wallet)
+\node (transaction) [utilitybox, below=1.2cm of wallet] {
     \centering \textbf{Transaction}\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + sender: std::string\\
-    + receiver: std::string\\
-    + amount: long long\\
-    + nonce: long long\\
-    + senderPubKey: std::string\\
-    + signature: std::string\\[2pt]
-    \rule{4.7cm}{0.4pt}\\[2pt]
-    + \textbf{coinbase}(miner, r): static Transaction\\
-    + \textbf{isCoinbase}() const: bool\\
-    + \textbf{signingPayload}() const: string\\
-    + \textbf{verifySignature}() const: bool
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    + sender : std::string\\
+    + receiver : std::string\\
+    + amount : long long\\
+    + nonce : long long\\
+    + senderPubKey : std::string\\
+    + signature : std::string\\[2pt]
+    \rule{4.8cm}{0.4pt}\\[2pt]
+    + \textbf{coinbase}(miner, r) : static Transaction\\
+    + \textbf{isCoinbase}() const : bool\\
+    + \textbf{signingPayload}() const : string\\
+    + \textbf{verifySignature}() const : bool
 };
 
-% ================= CLEAN, UN-CROSSED ORTHOGONAL CONNECTORS =================
+% ================= CLEAN, STRICTLY NON-CROSSING CONNECTORS =================
 
-% 1. Blockchain owns Block list (straight vertical in center)
-\draw [composition] (blockchain.north) -- (block.south) node[midway, right=2pt, font=\tiny] {owns list ($1 \to 0..\ast$)};
+% 1. Node owns local Blockchain replica (straight vertical)
+\draw [composition] (node.south) -- (blockchain.north)
+    node[midway, right=2pt, font=\tiny] {owns replica ($1 \to 1$)};
 
-% 2. Block next pointer (clean rectangular loop on top-right corner)
-\draw [arrow] (block.north east) -- ++(0.6, 0) |- (block.east)
-    node[near start, above, font=\tiny] {next};
+% 2. Blockchain owns Block singly linked list (straight vertical)
+\draw [composition] (blockchain.south) -- (block.north)
+    node[midway, right=2pt, font=\tiny] {owns list ($1 \to 0..\ast$)};
 
-% 3. Blockchain configured by ChainConfig
-\draw [composition] (blockchain.north west) -| (-3.4, 2.0) |- (chainconfig.east)
-    node[near start, above, font=\tiny] {configures};
+% 3. Block next pointer (self-loop neatly constrained on the left margin)
+\draw [arrow] (block.north west) -- ++(-0.6, 0) |- (block.west)
+    node[near start, left=2pt, font=\tiny] {next};
 
-% 4. Blockchain caches LedgerState (straight horizontal)
-\draw [composition] (blockchain.west |- ledgerstate.east) -- (ledgerstate.east)
-    node[midway, above, font=\tiny] {caches};
-
-% 5. Node owns local Blockchain replica (straight horizontal)
-\draw [composition] (node.east) -- (blockchain.west |- node.east)
-    node[midway, above, font=\tiny] {owns replica ($1 \to 1$)};
-
-% 6. Block contains Transactions (orthogonal via center gutter)
-\draw [aggregation] (block.south east) -| (3.4, 1.0) |- (transaction.west)
-    node[near start, above, font=\tiny] {contains txs};
-
-% 7. Blockchain holds pending Transactions (straight horizontal)
-\draw [aggregation] (blockchain.east |- transaction.west) -- (transaction.west)
-    node[midway, above, font=\tiny] {holds pending};
-
-% 8. Block hashes via Hasher (straight horizontal)
-\draw [dashedarrow] (block.east |- hasher.west) -- (hasher.west)
-    node[midway, above, font=\tiny] {hashes with};
-
-% 9. Wallet delegates signing to Signer (straight vertical)
+% 4. Wallet delegates signing and key generation to Signer (straight vertical)
 \draw [dashedarrow] (wallet.north) -- (signer.south)
     node[midway, right=2pt, font=\tiny] {uses};
 
-% 10. Wallet creates Transactions (straight vertical)
+% 5. Wallet instantiates and signs outbound Transactions (straight vertical)
 \draw [dashedarrow] (wallet.south) -- (transaction.north)
     node[midway, right=2pt, font=\tiny] {creates};
 
-% 11. Transaction verifies signatures via Signer (outer clean run)
-\draw [dashedarrow] (transaction.east) -- ++(0.4, 0) |- (signer.east)
+% 6. Block aggregates confirmed Transactions (straight horizontal)
+\draw [aggregation] (block.east) -- (transaction.west |- block.east)
+    node[midway, above, font=\tiny] {contains txs ($1 \to 0..\ast$)};
+
+% 7. Blockchain holds pending mempool Transactions (clean orthogonal)
+\draw [aggregation] (blockchain.east) -- ++(0.9, 0) |- (transaction.north west)
+    node[near start, above, font=\tiny] {holds pending};
+
+% 8. Transaction verifies ECDSA signatures via Signer (outer margin run)
+\draw [dashedarrow] (transaction.east) -- ++(0.5, 0) |- (signer.east)
     node[near start, right=2pt, font=\tiny] {verifies with};
 
+% 9. Block hashes header and transactions via Hasher (outer margin run)
+\draw [dashedarrow] (block.west) -- ++(-0.9, 0) |- (hasher.west)
+    node[near start, left=2pt, font=\tiny] {hashes with};
+
 \end{tikzpicture}
-\caption{Clean, Separated UML Class Diagram of the Blockchain Ledger Simulator.}
+\caption{Clean, Focused UML Class Diagram of the 7 Core Blockchain Classes.}
 \label{fig:uml_diagram}
 \end{figure}
+
 
 \clearpage
 
